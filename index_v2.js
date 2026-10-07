@@ -1,185 +1,318 @@
+const API_URL = 'api.php';
+
+// ------------------------------
+// Autocomplete configuration
+// ------------------------------
+
 const autoCompleteConfig = {
-   renderOption(movie) { 
-    const imgSrc = movie.Poster === 'N/A' ? '' : movie.Poster;
-    return `
-      <h2>${movie.Title}</h2>
-      <p>${movie.Year}</p>
-      <img src="${imgSrc}" />
-      ${movie.Title} (${movie.Year})
-    `;
-  },
-  inputValue(movie) {
-    return movie.Title;
-  },
-  async fetchData(searchTerm) {
-    return await axios.get('http://www.omdbapi.com/', {
-      params: {
-        apikey: 'YOUR_API_KEY',
-        s: searchTerm
-      }
-    }).then(response => {
-      if (response.data.Error) {
-        return [];
-      }
-      return response.data.Search;
-    });
-  }
-}
+    renderOption(movie) {
+        const poster = movie.Poster !== 'N/A'
+            ? movie.Poster
+            : '';
+
+        return `
+            <img src="${poster}" alt="${movie.Title}" />
+            ${movie.Title} (${movie.Year})
+        `;
+    },
+
+    inputValue(movie) {
+        return movie.Title;
+    },
+
+    async fetchData(searchTerm) {
+        const term = searchTerm.trim();
+
+        if (!term) {
+            return [];
+        }
+
+        try {
+            const response = await axios.get(API_URL, {
+                params: {
+                    s: term
+                }
+            });
+
+            if (
+                response.data.Error ||
+                !response.data.Search
+            ) {
+                return [];
+            }
+
+            return response.data.Search;
+        } catch (error) {
+            console.error('Movie search failed:', error);
+            return [];
+        }
+    }
+};
+
+
+// ------------------------------
+// Create autocomplete inputs
+// ------------------------------
 
 createAutocomplete({
-  ...autoCompleteConfig, // spread the autoCompleteConfig object to pass all its properties as arguments to the createAutocomplete function
-  root: document.querySelector('#left-autocomplete'),
-   onOptionSelect(movie) {
-    document.querySelector('.tutorial').classList.add('is-hidden');
-    onMovieSelect(movie, document.querySelector('#left-summary'),'left');
-  }
- 
+    ...autoCompleteConfig,
+    root: document.querySelector('#left-autocomplete'),
+
+    onOptionSelect(movie) {
+        onMovieSelect(movie, document.querySelector('#left-summary'));
+    }
 });
 
 createAutocomplete({
-  ...autoCompleteConfig, // spread the autoCompleteConfig object to pass all its properties as arguments to the createAutocomplete function
-  root: document.querySelector('#right-autocomplete'),
-  onOptionSelect(movie) {
-    document.querySelector('.tutorial').classList.add('is-hidden');
-    onMovieSelect(movie, document.querySelector('#right-summary'),'right');
-  }
+    ...autoCompleteConfig,
+    root: document.querySelector('#right-autocomplete'),
+
+    onOptionSelect(movie) {
+        onMovieSelect(movie, document.querySelector('#right-summary'));
+    }
 });
-// function to fetch and display the movie details when an option is clicked
+
+
+// ------------------------------
+// Movie selection
+// ------------------------------
+
 let leftMovie;
 let rightMovie;
-const onMovieSelect = async (movie, summaryElement, side) => {
-  const response = await axios.get('http://www.omdbapi.com/' , {
-    params: {
-      apikey: 'YOUR_API_KEY',
-      i: movie.imdbID
-    },
-  });
 
-  summaryElement.innerHTML = movieTemplate(response.data);
+async function onMovieSelect(movie, summaryElement) {
+    // Show loading state
+    summaryElement.innerHTML = `
+        <div class="notification is-info">
+            Loading movie information...
+        </div>
+    `;
 
-  if (side === 'left') {
-    leftMovie = response.data;
-  } else {
-    rightMovie = response.data;
-  }
+    try {
+        const response = await axios.get(API_URL, {
+            params: {
+                i: movie.imdbID
+            }
+        });
 
-  if (leftMovie && rightMovie) {
-    runComparison();
-  }
-};
+        if (response.data.Error) {
+            throw new Error(response.data.Error);
+        }
 
-const runComparison = () => {
-  const leftSideStats = document.querySelectorAll('#left-summary .notification');
-  const rightSideStats = document.querySelectorAll('#right-summary .notification');
+        summaryElement.innerHTML = movieTemplate(response.data);
 
-  leftSideStats.forEach((leftStat, index) => {
-    const rightStat = rightSideStats[index];
+        if (summaryElement.id === 'left-summary') {
+            leftMovie = response.data;
+        } else {
+            rightMovie = response.data;
+        }
 
-    const leftSideValue = parseFloat(leftStat.dataset.value);
-    const rightSideValue = parseFloat(rightStat.dataset.value);
+        if (leftMovie && rightMovie) {
+            runComparison();
+        }
 
-  
-    if (rightSideValue > leftSideValue) {
-      leftStat.classList.remove('is-primary');
-      leftStat.classList.add('is-warning'); // if the right side value is greater than the left side value, change the left stat to warning
-     
-    } 
-    else{
-      rightStat.classList.remove('is-primary');
-      rightStat.classList.add('is-warning'); // if the left side value is greater than the right side value, change the right stat to warning
+    } catch (error) {
+        console.error('Movie details request failed:', error);
+
+        summaryElement.innerHTML = `
+            <div class="notification is-danger">
+                Unable to load movie information.
+                Please try again.
+            </div>
+        `;
     }
-  });
 }
 
-const movieTemplate = movieDetail => {
-  //const imgSrc = movieDetail.Poster === 'N/A' ? '' : movieDetail.Poster;
-const dollars = parseInt(movieDetail.BoxOffice.replace(/\$/g, '').replace(/,/g, ''));;
-const metascore = parseInt(movieDetail.Metascore);
-const imdbRating = parseFloat(movieDetail.imdbRating);
-const imdbVotes = parseInt(movieDetail.imdbVotes.replace(/,/g, ''));
-const awards = movieDetail.Awards.split(' ').reduce((prev, word) => {
-  const value = parseInt(word);
-  if (isNaN(value)) {
-    return prev; // if the word is not a number, return the previous value
-  } else {
-    return prev + value; // if the word is a number, add it to the previous value
-  }
-}, 0);
-console.log(awards);
-  return `
-    <article class="media">
-      <figure class="media-left">
-        <p class="image">
-          <img src="${movieDetail.Poster}" />
-        </p>
-      </figure>
-      <div class="media-content">
-        <div class="content">
-          <h1>${movieDetail.Title}</h1>
-          <h4>${movieDetail.Genre} - ${movieDetail.Runtime}</h4>
-          <p>${movieDetail.Plot}</p>
-        </div>
-      </div>
-    </article>
 
-    <article data-value="${imdbRating}">
-      <div class="content">
-        <p>
-          <strong>IMDB Rating:</strong> ${movieDetail.imdbRating}
-        </p>
-      </div>
-    </article>
+// ------------------------------
+// Movie template
+// ------------------------------
 
-    <article data-value="${dollars}" class="notification is-primary">
-      <div class="content">
-        <p>
-          <strong>Box Office:</strong> ${movieDetail.BoxOffice}
-        </p>
-      </div>
-    </article>
+function movieTemplate(movie) {
+    const poster = movie.Poster !== 'N/A'
+        ? movie.Poster
+        : '';
 
-    
-    <article data-value="${metascore}" class="notification is-primary">
-      <div class="content">
-        <p>
-          <strong>Metascore:</strong> ${movieDetail.Metascore}
-        </p>
-      </div>
-    </article>
+    const boxOffice = parseNumber(movie.BoxOffice);
+    const metascore = parseNumber(movie.Metascore);
+    const imdbRating = parseFloat(movie.imdbRating) || 0;
+    const imdbVotes = parseNumber(movie.imdbVotes);
+    const awards = calculateAwards(movie.Awards);
 
-    <article data-value="${awards}" class="notification is-primary">
-      <div class="content">
-        <p>
-          <strong>Awards:</strong> ${movieDetail.Awards}
-        </p>
-      </div>
-    </article>  
+    return `
+        <article class="notification is-primary comparison-stat">
+            <h1 class="title">
+                ${movie.Title}
+            </h1>
 
-    <article data-value="${imdbVotes}" class="notification is-primary">
-      <div class="content">
-        <p>
-          <strong>IMDB Votes:</strong> ${movieDetail.imdbVotes}
-        </p>
-      </div>
-    </article>  
-  `;
-};
+            <figure class="image">
+                ${
+                    poster
+                        ? `<img src="${poster}" alt="${movie.Title} poster">`
+                        : '<div class="notification is-light">No poster available</div>'
+                }
+            </figure>
+
+            <p class="mt-4">
+                ${movie.Plot || 'No plot information available.'}
+            </p>
+
+            <div class="content mt-4">
+                <p>
+                    <strong>Genre:</strong>
+                    ${movie.Genre || 'N/A'}
+                </p>
+
+                <p>
+                    <strong>Runtime:</strong>
+                    ${movie.Runtime || 'N/A'}
+                </p>
+            </div>
+
+            <div class="content">
+
+                <article class="notification is-light comparison-stat">
+                    <strong>IMDb Rating:</strong>
+                    ${movie.imdbRating || 'N/A'}
+                </article>
+
+                <article class="notification is-light comparison-stat">
+                    <strong>IMDb Votes:</strong>
+                    ${movie.imdbVotes || 'N/A'}
+                </article>
+
+                <article class="notification is-light comparison-stat">
+                    <strong>Metascore:</strong>
+                    ${movie.Metascore || 'N/A'}
+                </article>
+
+                <article class="notification is-light comparison-stat">
+                    <strong>Box Office:</strong>
+                    ${movie.BoxOffice || 'N/A'}
+                </article>
+
+                <article class="notification is-light comparison-stat">
+                    <strong>Awards:</strong>
+                    ${movie.Awards || 'N/A'}
+                </article>
+
+            </div>
+        </article>
+    `;
+}
 
 
+// ------------------------------
+// Comparison logic
+// ------------------------------
 
+function runComparison() {
+    const leftStats = document.querySelectorAll(
+        '#left-summary .comparison-stat'
+    );
 
-// prevent below script running when input is empty
+    const rightStats = document.querySelectorAll(
+        '#right-summary .comparison-stat'
+    );
 
-/*let timeoutId;
-const onInput = event => {
-    if (timeoutId) {
-        clearTimeout(timeoutId); // clear the previous timeout if it exists
+    if (!leftStats.length || !rightStats.length) {
+        return;
     }
-  timeoutId = setTimeout(() => {
-        fetchData(event.target.value); // call the fetchData function after 1 second of inactivity
-    }, 1000);
-};*/
+
+    // IMDb rating
+    compareStats(
+        leftStats[1],
+        rightStats[1],
+        parseFloat(leftMovie.imdbRating) || 0,
+        parseFloat(rightMovie.imdbRating) || 0
+    );
+
+    // IMDb votes
+    compareStats(
+        leftStats[2],
+        rightStats[2],
+        parseNumber(leftMovie.imdbVotes),
+        parseNumber(rightMovie.imdbVotes)
+    );
+
+    // Metascore
+    compareStats(
+        leftStats[3],
+        rightStats[3],
+        parseNumber(leftMovie.Metascore),
+        parseNumber(rightMovie.Metascore)
+    );
+
+    // Box office
+    compareStats(
+        leftStats[4],
+        rightStats[4],
+        parseNumber(leftMovie.BoxOffice),
+        parseNumber(rightMovie.BoxOffice)
+    );
+
+    // Awards
+    compareStats(
+        leftStats[5],
+        rightStats[5],
+        calculateAwards(leftMovie.Awards),
+        calculateAwards(rightMovie.Awards)
+    );
+}
 
 
+// ------------------------------
+// Compare individual statistics
+// ------------------------------
 
- 
+function compareStats(leftElement, rightElement, leftValue, rightValue) {
+    if (!leftElement || !rightElement) {
+        return;
+    }
+
+    if (leftValue > rightValue) {
+        rightElement.classList.remove('is-primary');
+        rightElement.classList.add('is-warning');
+    } else if (rightValue > leftValue) {
+        leftElement.classList.remove('is-primary');
+        leftElement.classList.add('is-warning');
+    }
+}
+
+
+// ------------------------------
+// Number parsing helpers
+// ------------------------------
+
+function parseNumber(value) {
+    if (!value || value === 'N/A') {
+        return 0;
+    }
+
+    return Number(
+        value
+            .replace(/[$,]/g, '')
+            .replace(/ votes?/gi, '')
+            .trim()
+    ) || 0;
+}
+
+
+function calculateAwards(awards) {
+    if (!awards || awards === 'N/A') {
+        return 0;
+    }
+
+    const winsMatch = awards.match(/(\d+)\s+win/i);
+    const nominationsMatch = awards.match(/(\d+)\s+nomination/i);
+
+    const wins = winsMatch
+        ? parseInt(winsMatch[1], 10)
+        : 0;
+
+    const nominations = nominationsMatch
+        ? parseInt(nominationsMatch[1], 10)
+        : 0;
+
+    return wins + nominations;
+}
