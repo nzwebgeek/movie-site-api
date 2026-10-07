@@ -1,2 +1,0 @@
-https://www.omdbapi.com/?i=tt3896198&apikey=REDACTED
-api-key: REDACTED
